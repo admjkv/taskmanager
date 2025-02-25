@@ -86,3 +86,34 @@ function updateTaskStatus(id, newStatus) {
     };
     xhr.send(JSON.stringify({ status: newStatus }));
 }
+
+function toggleDarkMode() {
+    let currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+    document.documentElement.classList.remove('system-dark');
+
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    } else {
+        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+        if (prefersDark) {
+            document.documentElement.classList.add('system-dark');
+        }
+    }
+});
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('theme')) {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+        document.documentElement.classList.toggle('system-dark', e.matches);
+    }
+});
