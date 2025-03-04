@@ -263,3 +263,25 @@ li button:hover {
 .theme-toggle:active .moon {
     animation: scale-up 0.5s ease-in-out;
 }
+
+/* Mobile devices */
+@media (max-width: 480px) {
+  .container {
+    width: 90%;
+    padding: 15px;
+  }
+  
+  .theme-toggle {
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Tablets */
+@media (min-width: 481px) and (max-width: 768px) {
+  .container {
+    width: 70%;
+  }
+}
