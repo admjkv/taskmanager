@@ -3,37 +3,41 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function fetchTasks() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'api.php/tasks', true);
-    xhr.onload = function () {
-        if (xhr.status === 200) {
-            var tasks = JSON.parse(xhr.responseText);
-            var taskList = document.getElementById('task-list');
-            taskList.innerHTML = '';
-            tasks.forEach(function (task) {
-                var li = document.createElement('li');
-                li.textContent = task.title;
+    fetch('api.php/tasks')
+        .then(response => {
+            if (!response.ok) throw new Error('Network response failed');
+            return response.json();
+        })
+        .then(tasks => {
+            renderTasks(tasks);
+        })
+        .catch(error => console.error('Error fetching tasks:', error));
+}
 
-                var statusButton = document.createElement('button');
-                statusButton.textContent = task.status;
-                statusButton.className = 'task-status ' + task.status;
-                statusButton.onclick = function () {
-                    updateTaskStatus(task.id, task.status === 'pending' ? 'done' : 'pending');
-                };
+function renderTasks(tasks) {
+    const taskList = document.getElementById('task-list');
+    taskList.innerHTML = '';
+    tasks.forEach(task => {
+        var li = document.createElement('li');
+        li.textContent = task.title;
 
-                var deleteButton = document.createElement('button');
-                deleteButton.textContent = 'Delete';
-                deleteButton.onclick = function () {
-                    deleteTask(task.id);
-                };
+        var statusButton = document.createElement('button');
+        statusButton.textContent = task.status;
+        statusButton.className = 'task-status ' + task.status;
+        statusButton.onclick = function () {
+            updateTaskStatus(task.id, task.status === 'pending' ? 'done' : 'pending');
+        };
 
-                li.appendChild(statusButton);
-                li.appendChild(deleteButton);
-                taskList.appendChild(li);
-            });
-        }
-    };
-    xhr.send();
+        var deleteButton = document.createElement('button');
+        deleteButton.textContent = 'Delete';
+        deleteButton.onclick = function () {
+            deleteTask(task.id);
+        };
+
+        li.appendChild(statusButton);
+        li.appendChild(deleteButton);
+        taskList.appendChild(li);
+    });
 }
 
 function addTask() {
