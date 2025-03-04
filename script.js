@@ -58,14 +58,14 @@ function addTask() {
 }
 
 function deleteTask(id) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('DELETE', 'api.php/tasks/' + id, true);
-    xhr.onload = function () {
-        if (xhr.status === 200) {
-            fetchTasks();
-        }
-    };
-    xhr.send();
+    fetch(`api.php/tasks/${id}`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Failed to delete task');
+        fetchTasks();
+    })
+    .catch(error => console.error('Error deleting task:', error));
 }
 
 function deleteAllTasks() {
