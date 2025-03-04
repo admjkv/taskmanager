@@ -3,6 +3,9 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function fetchTasks() {
+    const taskList = document.getElementById('task-list');
+    taskList.innerHTML = '<li class="loading">Loading tasks...</li>';
+
     fetch('api.php/tasks')
         .then(response => {
             if (!response.ok) throw new Error('Network response failed');
@@ -41,31 +44,42 @@ function renderTasks(tasks) {
 }
 
 function addTask() {
-    var taskInput = document.getElementById('task-input');
-    var taskTitle = taskInput.value;
-    if (taskTitle) {
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', 'api.php/tasks', true);
-        xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
-        xhr.onload = function () {
-            if (xhr.status === 200) {
-                taskInput.value = '';
-                fetchTasks();
-            }
-        };
-        xhr.send(JSON.stringify({ title: taskTitle }));
-    }
+    const taskInput = document.getElementById('task-input');
+    const taskTitle = taskInput.value.trim();
+
+    if (!taskTitle) return;
+
+    fetch('api.php/tasks', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json;charset=UTF-8'
+        },
+        body: JSON.stringify({ title: taskTitle })
+    })
+        .then(response => {
+            if (!response.ok) throw new Error(`Failed to add task: ${response.status}`);
+            return response.json();
+        })
+        .then(() => {
+            taskInput.value = '';
+            fetchTasks();
+        })
+        .catch(error => {
+            console.error('Error adding task:', error);
+        })
+        .finally(() => {
+        });
 }
 
 function deleteTask(id) {
     fetch(`api.php/tasks/${id}`, {
         method: 'DELETE'
     })
-    .then(response => {
-        if (!response.ok) throw new Error('Failed to delete task');
-        fetchTasks();
-    })
-    .catch(error => console.error('Error deleting task:', error));
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to delete task');
+            fetchTasks();
+        })
+        .catch(error => console.error('Error deleting task:', error));
 }
 
 function deleteAllTasks() {
@@ -104,7 +118,7 @@ function toggleDarkMode() {
 document.addEventListener('DOMContentLoaded', () => {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
+
     if (savedTheme) {
         document.documentElement.setAttribute('data-theme', savedTheme);
     } else {
