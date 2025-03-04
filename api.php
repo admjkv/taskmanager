@@ -81,11 +81,20 @@ class TaskManager
      */
     public function addTask($title, $status = 'pending')
     {
-        $tasks   = $this->loadTasks();
+        $tasks = $this->loadTasks();
+
+        $maxId = 0;
+        foreach ($tasks as $task) {
+            if ($task['id'] > $maxId) {
+                $maxId = $task['id'];
+            }
+        }
+
         $newTask = [
-            'id'     => count($tasks) + 1,
+            'id'     => $maxId + 1,
             'title'  => $title,
             'status' => $status,
+            'created_at' => date('Y-m-d H:i:s')
         ];
         $tasks[] = $newTask;
         $this->saveTasks($tasks);
