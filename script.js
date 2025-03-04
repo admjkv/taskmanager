@@ -83,26 +83,29 @@ function deleteTask(id) {
 }
 
 function deleteAllTasks() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('DELETE', 'api.php/tasks', true);
-    xhr.onload = function () {
-        if (xhr.status === 200) {
+    fetch('api.php/tasks', {
+        method: 'DELETE'
+    })
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to delete all tasks');
             fetchTasks();
-        }
-    };
-    xhr.send();
+        })
+        .catch(error => console.error('Error deleting all tasks:', error));
 }
 
 function updateTaskStatus(id, newStatus) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('PATCH', 'api.php/tasks/' + id + '/status', true);
-    xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
-    xhr.onload = function () {
-        if (xhr.status === 200) {
+    fetch(`api.php/tasks/${id}/status`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json;charset=UTF-8'
+        },
+        body: JSON.stringify({ status: newStatus })
+    })
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to update task status');
             fetchTasks();
-        }
-    };
-    xhr.send(JSON.stringify({ status: newStatus }));
+        })
+        .catch(error => console.error('Error updating task status:', error));
 }
 
 function toggleDarkMode() {
