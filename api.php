@@ -1,6 +1,18 @@
 <?php
 header('Content-Type: application/json');
 
+/**
+ * Task Manager API
+ * 
+ * Endpoints:
+ * - GET    /tasks      - Get all tasks
+ * - POST   /tasks      - Create a new task
+ * - PUT    /tasks/{id} - Update a task
+ * - DELETE /tasks/{id} - Delete a task
+ * - DELETE /tasks      - Delete all tasks
+ * - PATCH  /tasks/{id} - Update task status
+ */
+
 class TaskManager
 {
     private $tasksFile;
