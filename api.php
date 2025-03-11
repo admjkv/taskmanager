@@ -168,7 +168,22 @@ if ($endpoint === 'tasks') {
             break;
 
         case 'POST':
-            $newTask = isset($input['status']) ? $taskManager->addTask($input['title'], $input['status']) : $taskManager->addTask($input['title']);
+            // Validate required fields
+            if (empty($input) || !isset($input['title']) || trim($input['title']) === '') {
+                http_response_code(400);
+                echo json_encode(['message' => 'Title is required']);
+                break;
+            }
+            
+            $status = isset($input['status']) ? $input['status'] : 'pending';
+            // Validate status value
+            if (!in_array($status, ['pending', 'in_progress', 'completed'])) {
+                http_response_code(400);
+                echo json_encode(['message' => 'Invalid status value']);
+                break;
+            }
+            
+            $newTask = $taskManager->addTask($input['title'], $status);
             echo json_encode($newTask);
             break;
 
