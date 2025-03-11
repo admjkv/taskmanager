@@ -32,8 +32,14 @@ class TaskManager
      */
     private function loadTasks()
     {
-        $tasks = file_exists($this->tasksFile) ? json_decode(file_get_contents($this->tasksFile), true) : null;
-        return is_array($tasks) ? $tasks : [];
+        try {
+            $tasks = file_exists($this->tasksFile) ? json_decode(file_get_contents($this->tasksFile), true) : null;
+            return is_array($tasks) ? $tasks : [];
+        } catch (Exception $e) {
+            // Log error
+            error_log("Error loading tasks: " . $e->getMessage());
+            return [];
+        }
     }
 
     /**
@@ -42,7 +48,13 @@ class TaskManager
      */
     private function saveTasks($tasks)
     {
-        file_put_contents($this->tasksFile, json_encode($tasks, JSON_PRETTY_PRINT));
+        try {
+            file_put_contents($this->tasksFile, json_encode($tasks, JSON_PRETTY_PRINT));
+        } catch (Exception $e) {
+            // Log error
+            error_log("Error saving tasks: " . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
