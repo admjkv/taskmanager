@@ -10,6 +10,44 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 header('Content-Type: application/json');
 
+function checkRateLimit() {
+    $clientIP = $_SERVER['REMOTE_ADDR'];
+    $cacheFile = sys_get_temp_dir() . '/rate_limit_' . md5($clientIP) . '.json';
+    
+    // Initialize or load rate limit data
+    if (file_exists($cacheFile)) {
+        $rateData = json_decode(file_get_contents($cacheFile), true);
+    } else {
+        $rateData = [
+            'count' => 0,
+            'reset_time' => time() + 60 // 1 minute window
+        ];
+    }
+    
+    // Reset if window has passed
+    if (time() > $rateData['reset_time']) {
+        $rateData = [
+            'count' => 1,
+            'reset_time' => time() + 60
+        ];
+    } else {
+        $rateData['count']++;
+    }
+    
+    // Save updated rate data
+    file_put_contents($cacheFile, json_encode($rateData));
+    
+    // Check if rate limit exceeded (e.g., 30 requests per minute)
+    if ($rateData['count'] > 30) {
+        header('Retry-After: ' . ($rateData['reset_time'] - time()));
+        http_response_code(429); // Too Many Requests
+        echo json_encode(['message' => 'Rate limit exceeded. Try again later.']);
+        exit;
+    }
+}
+
+checkRateLimit();
+
 /**
  * Task Manager API
  * 
