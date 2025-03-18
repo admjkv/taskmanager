@@ -92,12 +92,30 @@ class TaskManager
     }
 
     /**
-     * Get all tasks
+     * Get tasks with optional pagination
+     * @param int $page Page number (starting from 1)
+     * @param int $limit Items per page
      * @return array
      */
-    public function getTasks()
+    public function getTasks($page = null, $limit = null)
     {
-        return $this->loadTasks();
+        $tasks = $this->loadTasks();
+        
+        // Return all tasks if pagination is not requested
+        if ($page === null || $limit === null) {
+            return $tasks;
+        }
+        
+        // Calculate offset for pagination
+        $offset = ($page - 1) * $limit;
+        
+        return [
+            'tasks' => array_slice($tasks, $offset, $limit),
+            'total' => count($tasks),
+            'page' => $page,
+            'limit' => $limit,
+            'pages' => ceil(count($tasks) / $limit)
+        ];
     }
 
     /**
@@ -203,7 +221,9 @@ $id               = isset($requestUri[$endpointPosition + 1]) ? intval($requestU
 if ($endpoint === 'tasks') {
     switch ($method) {
         case 'GET':
-            echo json_encode($taskManager->getTasks());
+            $page = isset($_GET['page']) ? intval($_GET['page']) : null;
+            $limit = isset($_GET['limit']) ? intval($_GET['limit']) : null;
+            echo json_encode($taskManager->getTasks($page, $limit));
             break;
 
         case 'POST':
