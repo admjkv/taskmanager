@@ -58,7 +58,13 @@ class TaskManager
     private function saveTasks($tasks)
     {
         try {
-            file_put_contents($this->tasksFile, json_encode($tasks, JSON_PRETTY_PRINT));
+            if (!is_dir(dirname($this->tasksFile))) {
+                mkdir(dirname($this->tasksFile), 0755, true);
+            }
+            $result = file_put_contents($this->tasksFile, json_encode($tasks, JSON_PRETTY_PRINT));
+            if ($result === false) {
+                throw new Exception("Failed to write to file: " . $this->tasksFile);
+            }
         } catch (Exception $e) {
             // Log error
             error_log("Error saving tasks: " . $e->getMessage());
