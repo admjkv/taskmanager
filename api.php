@@ -280,8 +280,14 @@ if ($endpoint === 'tasks') {
                 break;
             }
             
-            $newTask = $taskManager->addTask($input['title'], $status);
-            echo json_encode($newTask);
+            try {
+                $newTask = $taskManager->addTask($input['title'], $status);
+                http_response_code(201); // Created
+                echo json_encode($newTask);
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode(['message' => 'Failed to create task: ' . $e->getMessage()]);
+            }
             break;
 
         case 'PUT':
