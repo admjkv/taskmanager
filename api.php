@@ -108,6 +108,18 @@ class TaskManager
      */
     public function addTask($title, $status = 'pending')
     {
+        // Sanitize input
+        $title = htmlspecialchars(trim($title), ENT_QUOTES, 'UTF-8');
+        if (empty($title)) {
+            throw new Exception("Task title cannot be empty");
+        }
+        
+        // Validate status
+        $validStatuses = ['pending', 'in_progress', 'completed'];
+        if (!in_array($status, $validStatuses)) {
+            $status = 'pending';
+        }
+        
         $tasks = $this->loadTasks();
 
         $maxId = 0;
