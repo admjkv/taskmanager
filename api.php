@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+error_reporting(1);
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
@@ -12,8 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 header('Content-Type: application/json');
 
+$clientIP = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
 function checkRateLimit() {
-    $clientIP = $_SERVER['REMOTE_ADDR'];
+    global $clientIP;
     $cacheFile = sys_get_temp_dir() . '/rate_limit_' . md5($clientIP) . '.json';
     
     // Initialize or load rate limit data
@@ -241,7 +244,7 @@ $method      = $_SERVER['REQUEST_METHOD'];
 $input       = json_decode(file_get_contents('php://input'), true);
 
 // Parse request URI
-$requestUri = $_SERVER['REQUEST_URI'];
+$requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($requestUri, PHP_URL_PATH);
 $pathParts = explode('/', trim($path, '/'));
 
