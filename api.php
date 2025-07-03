@@ -1,6 +1,7 @@
 <?php
+
 declare(strict_types=1);
-error_reporting(1);
+error_reporting(E_ALL);
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
@@ -15,21 +16,19 @@ header('Content-Type: application/json');
 
 $clientIP = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
-function checkRateLimit() {
+function checkRateLimit(): void {
     global $clientIP;
     $cacheFile = sys_get_temp_dir() . '/rate_limit_' . md5($clientIP) . '.json';
-    
-    // Initialize or load rate limit data
+    $rateData = [
+        'count' => 0,
+        'reset_time' => time() + 60
+    ];
     if (file_exists($cacheFile)) {
-        $rateData = json_decode(file_get_contents($cacheFile), true);
-    } else {
-        $rateData = [
-            'count' => 0,
-            'reset_time' => time() + 60 // 1 minute window
-        ];
+        $data = json_decode(file_get_contents($cacheFile), true);
+        if (is_array($data)) {
+            $rateData = $data;
+        }
     }
-    
-    // Reset if window has passed
     if (time() > $rateData['reset_time']) {
         $rateData = [
             'count' => 1,
@@ -38,15 +37,11 @@ function checkRateLimit() {
     } else {
         $rateData['count']++;
     }
-    
-    // Save updated rate data
-    file_put_contents($cacheFile, json_encode($rateData));
-    
-    // Check if rate limit exceeded (e.g., 30 requests per minute)
+    file_put_contents($cacheFile, json_encode($rateData, JSON_THROW_ON_ERROR));
     if ($rateData['count'] > 30) {
         header('Retry-After: ' . ($rateData['reset_time'] - time()));
-        http_response_code(429); // Too Many Requests
-        echo json_encode(['message' => 'Rate limit exceeded. Try again later.']);
+        http_response_code(429);
+        echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Try again later.']);
         exit;
     }
 }
@@ -65,6 +60,14 @@ checkRateLimit();
  * - PATCH  /tasks/{id}/status - Update task status
  */
 
+
+enum TaskStatus: string {
+    case Pending = 'pending';
+    case InProgress = 'in_progress';
+    case Completed = 'completed';
+    case Done = 'done';
+}
+
 class TaskManager
 {
     public function __construct(
@@ -73,23 +76,34 @@ class TaskManager
 
     /**
      * Load tasks from file
-     * @return array
      */
     private function loadTasks(): array
     {
         try {
-            $tasks = file_exists($this->tasksFile) ? json_decode(file_get_contents($this->tasksFile), true) : null;
+            if (!file_exists($this->tasksFile)) {
+                return [];
+            }
+            $fp = fopen($this->tasksFile, 'r');
+            if ($fp === false) {
+                throw new RuntimeException("Failed to open file for reading: {$this->tasksFile}");
+            }
+            flock($fp, LOCK_SH);
+            $contents = stream_get_contents($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            $tasks = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
             return is_array($tasks) ? $tasks : [];
-        } catch (Exception $e) {
-            // Log error
+        } catch (\JsonException $e) {
+            error_log("JSON decode error: " . $e->getMessage());
+            return [];
+        } catch (\Throwable $e) {
             error_log("Error loading tasks: " . $e->getMessage());
             return [];
         }
     }
 
     /**
-     * Save tasks to file
-     * @param array $tasks
+     * Save tasks to file (with file locking)
      */
     private function saveTasks(array $tasks): void
     {
@@ -97,12 +111,18 @@ class TaskManager
             if (!is_dir(dirname($this->tasksFile))) {
                 mkdir(dirname($this->tasksFile), 0755, true);
             }
-            $result = file_put_contents($this->tasksFile, json_encode($tasks, JSON_PRETTY_PRINT));
-            if ($result === false) {
-                throw new Exception("Failed to write to file: " . $this->tasksFile);
+            $fp = fopen($this->tasksFile, 'c+');
+            if ($fp === false) {
+                throw new RuntimeException("Failed to open file for writing: {$this->tasksFile}");
             }
-        } catch (Exception $e) {
-            // Log error
+            flock($fp, LOCK_EX);
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($tasks, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        } catch (\Throwable $e) {
             error_log("Error saving tasks: " . $e->getMessage());
             throw $e;
         }
@@ -110,16 +130,14 @@ class TaskManager
 
     /**
      * Update task status
-     * @param int $id
-     * @param string $status
-     * @return array|null
      */
-    public function updateTaskStatus($id, $status)
+    public function updateTaskStatus(int $id, TaskStatus|string $status): ?array
     {
+        $status = $status instanceof TaskStatus ? $status : TaskStatus::tryFrom($status) ?? TaskStatus::Pending;
         $tasks = $this->loadTasks();
         foreach ($tasks as &$task) {
-            if ($task['id'] == $id) {
-                $task['status'] = $status;
+            if ($task['id'] === $id) {
+                $task['status'] = $status->value;
                 $this->saveTasks($tasks);
                 return $task;
             }
@@ -129,83 +147,72 @@ class TaskManager
 
     /**
      * Get tasks with optional pagination
-     * @param int $page Page number (starting from 1)
-     * @param int $limit Items per page
-     * @return array
      */
-    public function getTasks($page = null, $limit = null)
+    public function getTasks(?int $page = null, ?int $limit = null): array
     {
         $tasks = $this->loadTasks();
-        
-        // Return all tasks if pagination is not requested
         if ($page === null || $limit === null) {
-            return $tasks;
+            return [
+                'success' => true,
+                'data' => $tasks
+            ];
         }
-        
-        // Calculate offset for pagination
         $offset = ($page - 1) * $limit;
-        
         return [
-            'tasks' => array_slice($tasks, $offset, $limit),
-            'total' => count($tasks),
-            'page' => $page,
-            'limit' => $limit,
-            'pages' => ceil(count($tasks) / $limit)
+            'success' => true,
+            'data' => [
+                'tasks' => array_slice($tasks, $offset, $limit),
+                'total' => count($tasks),
+                'page' => $page,
+                'limit' => $limit,
+                'pages' => (int)ceil(count($tasks) / $limit)
+            ]
         ];
     }
 
     /**
      * Add a new task
-     * @param string $title
-     * @param string $status
-     * @return array
      */
-    public function addTask(string $title, string $status = 'pending'): array
+    public function addTask(string $title, TaskStatus|string $status = TaskStatus::Pending): array
     {
-        // Sanitize input
         $title = htmlspecialchars(trim($title), ENT_QUOTES, 'UTF-8');
-        if (empty($title)) {
-            throw new Exception("Task title cannot be empty");
+        if ($title === '') {
+            throw new InvalidArgumentException("Task title cannot be empty", 400);
         }
-        
-        // Validate status
-        $validStatuses = ['pending', 'in_progress', 'completed', 'done'];
-        if (!in_array($status, $validStatuses)) {
-            $status = 'pending';
-        }
-        
+        $status = $status instanceof TaskStatus ? $status : TaskStatus::tryFrom($status) ?? TaskStatus::Pending;
         $tasks = $this->loadTasks();
-
         $maxId = empty($tasks) ? 0 : max(array_map(fn($task) => $task['id'], $tasks));
-
         $newTask = [
-            'id'     => $maxId + 1,
-            'title'  => $title,
-            'status' => $status,
+            'id' => $maxId + 1,
+            'title' => $title,
+            'status' => $status->value,
             'created_at' => date('Y-m-d H:i:s')
         ];
         $tasks[] = $newTask;
         $this->saveTasks($tasks);
-        return $newTask;
+        return [
+            'success' => true,
+            'data' => $newTask
+        ];
     }
 
     /**
      * Update a task
-     * @param int $id
-     * @param string $title
-     * @param string $status
-     * @return array|null
      */
-    public function updateTask($id, $title, $status)
+    public function updateTask(int $id, string $title, TaskStatus|string $status): ?array
     {
         $title = htmlspecialchars(trim($title), ENT_QUOTES, 'UTF-8');
+        $status = $status instanceof TaskStatus ? $status : TaskStatus::tryFrom($status) ?? TaskStatus::Pending;
         $tasks = $this->loadTasks();
         foreach ($tasks as &$task) {
-            if ($task['id'] == $id) {
+            if ($task['id'] === $id) {
                 $task['title'] = $title;
-                $task['status'] = $status;
+                $task['status'] = $status->value;
                 $this->saveTasks($tasks);
-                return $task;
+                return [
+                    'success' => true,
+                    'data' => $task
+                ];
             }
         }
         return null;
@@ -213,14 +220,12 @@ class TaskManager
 
     /**
      * Delete a task
-     * @param int $id
-     * @return bool
      */
-    public function deleteTask($id)
+    public function deleteTask(int $id): bool
     {
         $tasks = $this->loadTasks();
         foreach ($tasks as $key => $task) {
-            if ($task['id'] == $id) {
+            if ($task['id'] === $id) {
                 array_splice($tasks, $key, 1);
                 $this->saveTasks($tasks);
                 return true;
@@ -232,56 +237,70 @@ class TaskManager
     /**
      * Delete all tasks
      */
-    public function deleteAllTasks()
+    public function deleteAllTasks(): void
     {
         $this->saveTasks([]);
     }
 }
 
 // Setup task manager
+
 $taskManager = new TaskManager('tasks.json');
 $method      = $_SERVER['REQUEST_METHOD'];
-$input       = json_decode(file_get_contents('php://input'), true);
+$input       = json_decode(file_get_contents('php://input'), true) ?? [];
 
-// Parse request URI
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($requestUri, PHP_URL_PATH);
 $pathParts = explode('/', trim($path, '/'));
 
-// Find the api.php position and extract endpoint
 $apiIndex = array_search('api.php', $pathParts);
 if ($apiIndex !== false) {
-    $endpoint = isset($pathParts[$apiIndex + 1]) ? $pathParts[$apiIndex + 1] : '';
-    $id = isset($pathParts[$apiIndex + 2]) ? intval($pathParts[$apiIndex + 2]) : null;
-    $action = isset($pathParts[$apiIndex + 3]) ? $pathParts[$apiIndex + 3] : null;
+    $endpoint = $pathParts[$apiIndex + 1] ?? '';
+    $id = isset($pathParts[$apiIndex + 2]) ? (int)$pathParts[$apiIndex + 2] : null;
+    $action = $pathParts[$apiIndex + 3] ?? null;
 } else {
     $endpoint = '';
     $id = null;
     $action = null;
 }
 
-// Handle request by method
+function jsonResponse(mixed $data, int $status = 200): void {
+    http_response_code($status);
+    echo json_encode($data, JSON_THROW_ON_ERROR);
+    exit;
+}
+
 if ($endpoint === 'tasks') {
-    $page = isset($_GET['page']) ? intval($_GET['page']) : null;
-    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : null;
+    $page = isset($_GET['page']) ? (int)$_GET['page'] : null;
+    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : null;
 
     $handler = match($method) {
         'GET'    => fn() => $taskManager->getTasks($page, $limit),
-        'POST'   => fn() => $taskManager->addTask($input['title'], $input['status'] ?? 'pending'),
-        'PUT'    => fn() => $taskManager->updateTask($id, $input['title'], $input['status']),
-        'DELETE' => fn() => $id !== null ? $taskManager->deleteTask($id) : $taskManager->deleteAllTasks(),
-        'PATCH'  => fn() => ($action === 'status') ? $taskManager->updateTaskStatus($id, $input['status']) : null,
+        'POST'   => fn() => $taskManager->addTask($input['title'] ?? '', $input['status'] ?? TaskStatus::Pending),
+        'PUT'    => fn() => $taskManager->updateTask($id, $input['title'] ?? '', $input['status'] ?? TaskStatus::Pending),
+        'DELETE' => fn() => $id !== null ?
+            jsonResponse(['success' => $taskManager->deleteTask($id)], 204) :
+            ($taskManager->deleteAllTasks() ?? jsonResponse(['success' => true], 204)),
+        'PATCH'  => fn() => ($action === 'status') ? $taskManager->updateTaskStatus($id, $input['status'] ?? TaskStatus::Pending) : null,
         default  => fn() => throw new Exception('Method not allowed', 405),
     };
 
     try {
         $result = $handler();
-        echo json_encode($result);
+        if ($result === null) {
+            jsonResponse(['success' => false, 'message' => 'Not found'], 404);
+        } elseif (is_array($result) && isset($result['success']) && $result['success'] === true) {
+            jsonResponse($result);
+        } elseif ($method === 'DELETE') {
+            // Already handled above
+        } else {
+            jsonResponse(['success' => true, 'data' => $result]);
+        }
+    } catch (InvalidArgumentException $e) {
+        jsonResponse(['success' => false, 'message' => $e->getMessage()], $e->getCode() ?: 400);
     } catch (Exception $e) {
-        http_response_code($e->getCode() ?: 500);
-        echo json_encode(['message' => $e->getMessage()]);
+        jsonResponse(['success' => false, 'message' => $e->getMessage()], $e->getCode() ?: 500);
     }
 } else {
-    http_response_code(404);
-    echo json_encode(['message' => 'Endpoint not found']);
+    jsonResponse(['success' => false, 'message' => 'Endpoint not found'], 404);
 }
