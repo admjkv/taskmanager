@@ -17,7 +17,9 @@
         <section class="task-input" aria-label="Add new task">
             <input type="text" id="task-input" placeholder="Enter a new task" aria-label="Task input">
             <button id="add-task-btn">Add Task</button>
-            <button class="delete-all-button" id="delete-all-btn">Delete All</button>
+            <button class="delete-all-button" id="delete-all-btn">
+                Delete All
+            </button>
         </section>
         <ul id="task-list" aria-label="Task list"></ul>
     </main>
@@ -32,7 +34,6 @@
     </button>
     <script src="script.js"></script>
     <script>
-        // Move event listeners to JS for cleaner HTML
         document.getElementById('add-task-btn').addEventListener('click', addTask);
         document.getElementById('delete-all-btn').addEventListener('click', deleteAllTasks);
         document.getElementById('theme-toggle').addEventListener('click', toggleDarkMode);
