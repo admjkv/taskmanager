@@ -59,14 +59,8 @@ checkRateLimit();
  * - PUT    /tasks/{id} - Update a task
  * - DELETE /tasks/{id} - Delete a task
  * - DELETE /tasks      - Delete all tasks
- * - PATCH  /tasks/{id} - Update task status
+ * - PATCH  /tasks/{id}/status - Update task status
  */
-
-enum TaskStatus: string {
-    case Pending = 'pending';
-    case InProgress = 'in_progress';
-    case Completed = 'completed';
-}
 
 class TaskManager
 {
@@ -163,7 +157,7 @@ class TaskManager
      * @param string $status
      * @return array
      */
-    public function addTask(string $title, TaskStatus $status = TaskStatus::Pending): array
+    public function addTask(string $title, string $status = 'pending'): array
     {
         // Sanitize input
         $title = htmlspecialchars(trim($title), ENT_QUOTES, 'UTF-8');
@@ -172,14 +166,14 @@ class TaskManager
         }
         
         // Validate status
-        $validStatuses = ['pending', 'in_progress', 'completed'];
+        $validStatuses = ['pending', 'in_progress', 'completed', 'done'];
         if (!in_array($status, $validStatuses)) {
             $status = 'pending';
         }
         
         $tasks = $this->loadTasks();
 
-        $maxId = max(array_map(fn($task) => $task['id'], $tasks)) ?: 0;
+        $maxId = empty($tasks) ? 0 : max(array_map(fn($task) => $task['id'], $tasks));
 
         $newTask = [
             'id'     => $maxId + 1,
@@ -205,8 +199,8 @@ class TaskManager
         $tasks = $this->loadTasks();
         foreach ($tasks as &$task) {
             if ($task['id'] == $id) {
-                $task['title'  ] = $title;
-                $task['status' ] = $status;
+                $task['title'] = $title;
+                $task['status'] = $status;
                 $this->saveTasks($tasks);
                 return $task;
             }
@@ -247,10 +241,21 @@ $method      = $_SERVER['REQUEST_METHOD'];
 $input       = json_decode(file_get_contents('php://input'), true);
 
 // Parse request URI
-$requestUri       = explode('/', trim($_SERVER['REQUEST_URI'], '/'));
-$endpointPosition = strpos($_SERVER['REQUEST_URI'], 'api.php') ? 1 : 0;
-$endpoint         = isset($requestUri[$endpointPosition]) ? $requestUri[$endpointPosition] : '';
-$id               = isset($requestUri[$endpointPosition + 1]) ? intval($requestUri[$endpointPosition + 1]) : null;
+$requestUri = $_SERVER['REQUEST_URI'];
+$path = parse_url($requestUri, PHP_URL_PATH);
+$pathParts = explode('/', trim($path, '/'));
+
+// Find the api.php position and extract endpoint
+$apiIndex = array_search('api.php', $pathParts);
+if ($apiIndex !== false) {
+    $endpoint = isset($pathParts[$apiIndex + 1]) ? $pathParts[$apiIndex + 1] : '';
+    $id = isset($pathParts[$apiIndex + 2]) ? intval($pathParts[$apiIndex + 2]) : null;
+    $action = isset($pathParts[$apiIndex + 3]) ? $pathParts[$apiIndex + 3] : null;
+} else {
+    $endpoint = '';
+    $id = null;
+    $action = null;
+}
 
 // Handle request by method
 if ($endpoint === 'tasks') {
@@ -259,10 +264,10 @@ if ($endpoint === 'tasks') {
 
     $handler = match($method) {
         'GET'    => fn() => $taskManager->getTasks($page, $limit),
-        'POST'   => fn() => $taskManager->addTask($input['title'], TaskStatus::from($input['status'] ?? 'pending')),
+        'POST'   => fn() => $taskManager->addTask($input['title'], $input['status'] ?? 'pending'),
         'PUT'    => fn() => $taskManager->updateTask($id, $input['title'], $input['status']),
         'DELETE' => fn() => $id !== null ? $taskManager->deleteTask($id) : $taskManager->deleteAllTasks(),
-        'PATCH'  => fn() => $taskManager->updateTaskStatus($id, $input['status']),
+        'PATCH'  => fn() => ($action === 'status') ? $taskManager->updateTaskStatus($id, $input['status']) : null,
         default  => fn() => throw new Exception('Method not allowed', 405),
     };
 
@@ -277,7 +282,3 @@ if ($endpoint === 'tasks') {
     http_response_code(404);
     echo json_encode(['message' => 'Endpoint not found']);
 }
-
-$page = $_GET['page'] ?? null;
-$limit = $_GET['limit'] ?? null;
-echo json_encode($taskManager?->getTasks($page, $limit));
