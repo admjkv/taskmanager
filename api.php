@@ -16,6 +16,11 @@ header('Content-Type: application/json');
 
 $clientIP = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
+/**
+ * Checks and enforces a simple rate limit per client IP.
+ *
+ * @return void
+ */
 function checkRateLimit(): void {
     global $clientIP;
     $cacheFile = sys_get_temp_dir() . '/rate_limit_' . md5($clientIP) . '.json';
@@ -60,7 +65,9 @@ checkRateLimit();
  * - PATCH  /tasks/{id}/status - Update task status
  */
 
-
+/**
+ * Enum representing possible task statuses.
+ */
 enum TaskStatus: string {
     case Pending = 'pending';
     case InProgress = 'in_progress';
@@ -68,14 +75,26 @@ enum TaskStatus: string {
     case Done = 'done';
 }
 
+/**
+ * Class TaskManager
+ * 
+ * Manages CRUD operations for tasks stored in a JSON file.
+ */
 class TaskManager
 {
+    /**
+     * TaskManager constructor.
+     *
+     * @param string $tasksFile Path to the tasks JSON file.
+     */
     public function __construct(
         public readonly string $tasksFile
     ) {}
 
     /**
-     * Load tasks from file
+     * Load tasks from file.
+     *
+     * @return array Loaded tasks.
      */
     private function loadTasks(): array
     {
@@ -103,7 +122,11 @@ class TaskManager
     }
 
     /**
-     * Save tasks to file (with file locking)
+     * Save tasks to file (with file locking).
+     *
+     * @param array $tasks Tasks to save.
+     * @return void
+     * @throws \Throwable If saving fails.
      */
     private function saveTasks(array $tasks): void
     {
@@ -129,7 +152,11 @@ class TaskManager
     }
 
     /**
-     * Update task status
+     * Update task status.
+     *
+     * @param int $id Task ID.
+     * @param TaskStatus|string $status New status.
+     * @return array|null Updated task or null if not found.
      */
     public function updateTaskStatus(int $id, TaskStatus|string $status): ?array
     {
@@ -146,7 +173,11 @@ class TaskManager
     }
 
     /**
-     * Get tasks with optional pagination
+     * Get tasks with optional pagination.
+     *
+     * @param int|null $page Page number.
+     * @param int|null $limit Number of tasks per page.
+     * @return array List of tasks and pagination info.
      */
     public function getTasks(?int $page = null, ?int $limit = null): array
     {
@@ -171,7 +202,12 @@ class TaskManager
     }
 
     /**
-     * Add a new task
+     * Add a new task.
+     *
+     * @param string $title Task title.
+     * @param TaskStatus|string $status Task status.
+     * @return array Result with new task data.
+     * @throws InvalidArgumentException If title is empty.
      */
     public function addTask(string $title, TaskStatus|string $status = TaskStatus::Pending): array
     {
@@ -197,7 +233,12 @@ class TaskManager
     }
 
     /**
-     * Update a task
+     * Update a task.
+     *
+     * @param int $id Task ID.
+     * @param string $title New title.
+     * @param TaskStatus|string $status New status.
+     * @return array|null Updated task or null if not found.
      */
     public function updateTask(int $id, string $title, TaskStatus|string $status): ?array
     {
@@ -219,7 +260,10 @@ class TaskManager
     }
 
     /**
-     * Delete a task
+     * Delete a task.
+     *
+     * @param int $id Task ID.
+     * @return bool True if deleted, false if not found.
      */
     public function deleteTask(int $id): bool
     {
@@ -235,7 +279,9 @@ class TaskManager
     }
 
     /**
-     * Delete all tasks
+     * Delete all tasks.
+     *
+     * @return void
      */
     public function deleteAllTasks(): void
     {
@@ -264,6 +310,13 @@ if ($apiIndex !== false) {
     $action = null;
 }
 
+/**
+ * Sends a JSON response and exits.
+ *
+ * @param mixed $data Response data.
+ * @param int $status HTTP status code.
+ * @return void
+ */
 function jsonResponse(mixed $data, int $status = 200): void {
     http_response_code($status);
     echo json_encode($data, JSON_THROW_ON_ERROR);
